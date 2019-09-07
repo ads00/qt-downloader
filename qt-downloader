@@ -14,6 +14,9 @@ from pathlib import Path
 
 BaseUrl = 'https://download.qt.io/online/qtsdkrepository/'
 
+Modules = ['qtwebengine', 'qtscript']
+
+
 OsMap = {
   'macos': 'mac_x64',
   'linux': 'linux_x64',
@@ -98,18 +101,29 @@ def build_url(args):
   return BaseUrl + '{}/{}/qt5_{}/'.format(OsMap[args.os], args.target, ver)
 
 
-def get_info(url, version, toolchain):
+def process(url, version, toolchain):
   reply = requests.get(url + "Updates.xml")
   update_xml = etree.fromstring(reply.content)
 
   ver = version.replace('.', '')
 
-  for package in update_xml.xpath('//PackageUpdate'):
-    name = package.xpath('Name/text()')[0]
-    if name.startswith('qt.') and name.endswith('.{}.{}'.format(ver, toolchain)):
-      version = package.xpath('Version/text()')[0]
-      archives = package.xpath('DownloadableArchives/text()')[0].split(', ')
-      return (name, version, archives)
+  packages = update_xml.xpath('//PackageUpdate')
+
+  for index, module in enumerate(Modules):
+    module_name = 'qt.qt5.{}.{}.{}'.format(ver, module, toolchain)
+    Modules[index] = module_name
+
+  for package in packages:
+    names = package.xpath('Name/text()')
+    for index, name in enumerate(names):
+      if name.startswith('qt.') and name.endswith('.{}.{}'.format(ver, toolchain)) or name in Modules:
+        version = package.xpath('Version/text()')[index]
+        archives = package.xpath('DownloadableArchives/text()')[index].split(', ')
+        download_and_extract(url + name + '/' + version, archives)
+      
+  return (name, version, archives)
+
+
 
   print('Update.xml does not contain proper entry for Qt kit', file=sys.stderr)
   return None
@@ -320,12 +334,8 @@ def main():
     verify_parameters(args)
     url = build_url(args)
 
-    info = get_info(url, args.version, args.toolchain)
-    if info is None:
-      sys.exit(1)
+    process(url, args.version, args.toolchain)
 
-    name, version, archives = info
-    download_and_extract(url + name + '/' + version, archives)
 
 
 if __name__ == '__main__':
